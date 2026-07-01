@@ -114,6 +114,23 @@ a{color:inherit}
   max-width:560px;
 }
 
+.login-wordmark{
+  margin:0 0 26px;
+  font-size:clamp(26px,6vw,42px);
+  font-weight:800;
+  letter-spacing:.34em;
+  text-transform:uppercase;
+  background:linear-gradient(100deg,var(--primary) 10%,#eafcff 45%,var(--secondary) 90%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+  filter:drop-shadow(0 0 22px rgba(0,212,255,.4));
+  opacity:0;
+  transform:translateY(-12px) scale(.95);
+  transition:opacity 1.1s ease, transform 1.1s cubic-bezier(.2,.7,.2,1);
+}
+.login-wordmark.in{opacity:1;transform:translateY(0) scale(1)}
+
 .login-logo-stage{
   position:relative;
   width:min(46vw,190px);
@@ -573,6 +590,7 @@ header.top{
 <div id="login">
   <div class="login-particles" id="loginParticles"></div>
   <div class="login-inner">
+    <h1 class="login-wordmark" id="loginWordmark">POLKORP AI</h1>
     <div class="login-logo-stage">
       <div class="login-glow"></div>
       <div class="login-logo" id="loginLogo">
@@ -848,9 +866,11 @@ function wait(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 function runLoginSequence(){
   spawnEmbers();
 
+  var wordmark = document.getElementById("loginWordmark");
   var logo = document.getElementById("loginLogo");
   requestAnimationFrame(function(){
-    setTimeout(function(){ logo.classList.add("in"); }, 80);
+    setTimeout(function(){ wordmark.classList.add("in"); }, 60);
+    setTimeout(function(){ logo.classList.add("in"); }, 260);
   });
 
   wait(1450)
