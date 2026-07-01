@@ -1,0 +1,91 @@
+# POLKORP AI — full production stack
+# GPU services (ollama, lama, fooocus) require the NVIDIA Container Toolkit
+# on the host (installed by deploy-vps-full.sh).
+
+x-gpu: &gpu-runtime
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  dashboard:
+    image: nginx:alpine
+    container_name: polkorp-dashboard
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    networks:
+      - polkorp-net
+    depends_on:
+      - backend
+
+  # Placeholder service — no backend code is part of this batch. This wires
+  # up the port/network so a real FastAPI app can be dropped into ./backend
+  # later without touching the rest of the stack.
+  backend:
+    image: python:3.11-slim
+    container_name: polkorp-backend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5050:5050"
+    command: >
+      sh -c "echo 'POLKORP AI backend placeholder — add a FastAPI app to ./backend and update this command.'
+      && python3 -m http.server 5050"
+    networks:
+      - polkorp-net
+
+  ollama:
+    image: ollama/ollama
+    container_name: polkorp-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - polkorp-net
+    <<: *gpu-runtime
+
+  lama:
+    image: cwq1913/lama-cleaner
+    container_name: polkorp-lama
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - fooocus-outputs:/app/outputs
+    networks:
+      - polkorp-net
+    <<: *gpu-runtime
+
+  fooocus:
+    build:
+      context: ./fooocus
+    image: polkorp-fooocus:latest
+    container_name: polkorp-fooocus
+    restart: unless-stopped
+    ports:
+      - "7865:7865"
+    volumes:
+      - fooocus-outputs:/content/app/outputs
+    networks:
+      - polkorp-net
+    <<: *gpu-runtime
+
+networks:
+  polkorp-net:
+    driver: bridge
+
+volumes:
+  ollama-data:
+  fooocus-outputs:
