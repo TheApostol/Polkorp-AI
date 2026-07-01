@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">POLKORP AI emblem</title>
+  <desc id="desc">Open book emblem with circuit board pages and a vertical data core.</desc>
+  <defs>
+    <filter id="coreGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feFlood flood-color="#00d4ff" flood-opacity="0.65"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      .book{fill:none;stroke:#00d4ff;stroke-width:24;stroke-linecap:square;stroke-linejoin:miter}
+      .trace{fill:none;stroke:#00d4ff;stroke-width:18;stroke-linecap:square;stroke-linejoin:miter}
+      .trace-blue{fill:none;stroke:#0066ff;stroke-width:18;stroke-linecap:square;stroke-linejoin:miter}
+      .node{fill:#0a0a0f;stroke:#00d4ff;stroke-width:16}
+      .node-blue{fill:#0a0a0f;stroke:#0066ff;stroke-width:16}
+      .core{fill:#00d4ff;filter:url(#coreGlow)}
+      .core-line{stroke:#00d4ff;stroke-width:18;stroke-linecap:square;filter:url(#coreGlow)}
+    </style>
+  </defs>
+
+  <g transform="translate(0 8)">
+    <path class="book" d="M500 248 286 142v318l214 130v250L278 688V510"/>
+    <path class="book" d="M524 248 738 142v318L524 590v250l222-152V510"/>
+    <path class="book" d="M500 840 420 736 278 688"/>
+    <path class="book" d="M524 840 604 736 746 688"/>
+
+    <rect class="core" x="492" y="268" width="40" height="456" rx="4"/>
+    <path class="core-line" d="M512 206v78M512 724v90"/>
+
+    <path class="trace" d="M330 244h82l86 76v118"/>
+    <path class="trace" d="M318 338h88l92 84v124"/>
+    <path class="trace" d="M300 446h120l78 72v122"/>
+    <path class="trace-blue" d="M254 250l92 92h82l70 70"/>
+    <path class="trace-blue" d="M254 556h100l144 112"/>
+
+    <path class="trace" d="M694 244h-82l-86 76v118"/>
+    <path class="trace" d="M706 338h-88l-92 84v124"/>
+    <path class="trace" d="M724 446H604l-78 72v122"/>
+    <path class="trace-blue" d="M770 250l-92 92h-82l-70 70"/>
+    <path class="trace-blue" d="M770 556H670L526 668"/>
+
+    <rect class="node" x="238" y="232" width="38" height="38"/>
+    <rect class="node" x="230" y="428" width="38" height="38"/>
+    <rect class="node-blue" x="230" y="538" width="38" height="38"/>
+    <rect class="node" x="400" y="230" width="38" height="38"/>
+    <rect class="node" x="748" y="232" width="38" height="38"/>
+    <rect class="node" x="756" y="428" width="38" height="38"/>
+    <rect class="node-blue" x="756" y="538" width="38" height="38"/>
+    <rect class="node" x="586" y="230" width="38" height="38"/>
+  </g>
+</svg>
