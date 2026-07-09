@@ -1,0 +1,61 @@
+# POLKORP AI — free-tier stack (Oracle Cloud Always Free, ARM64, CPU only)
+#
+# Differs from docker-compose.yml (the full GPU spec):
+#   - no NVIDIA device reservations (this host has no GPU)
+#   - no `fooocus` service — nvidia/cuda base image doesn't run on ARM64,
+#     and there's no GPU here anyway; Fooocus stays on Kaggle for this setup
+#   - no `lama` service — installed via pipx directly on the host instead
+#     (see deploy-vps-free.sh), sidestepping uncertain ARM64 support in the
+#     cwq1913/lama-cleaner image
+#   - ollama's official image is multi-arch and runs fine CPU-only on ARM64
+
+services:
+  dashboard:
+    image: nginx:alpine
+    container_name: polkorp-dashboard
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    networks:
+      - polkorp-net
+    depends_on:
+      - backend
+
+  # Placeholder — same stub as the full stack, see docker-compose.yml.
+  backend:
+    image: python:3.11-slim
+    container_name: polkorp-backend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5050:5050"
+    command: >
+      sh -c "echo 'POLKORP AI backend placeholder — add a FastAPI app to ./backend and update this command.'
+      && python3 -m http.server 5050"
+    networks:
+      - polkorp-net
+
+  ollama:
+    image: ollama/ollama
+    container_name: polkorp-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - polkorp-net
+    # No GPU block: runs CPU-only. On 2 OCPU/12GB, stick to small/medium
+    # quantized models (e.g. llama3.1:8b at q4 quantization).
+
+networks:
+  polkorp-net:
+    driver: bridge
+
+volumes:
+  ollama-data:
