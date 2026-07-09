@@ -58,7 +58,7 @@ fi
 info "Updating apt and installing base packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y curl wget git nginx python3-pip python3-venv pipx ufw fail2ban ca-certificates gnupg
+apt-get install -y curl wget git python3-pip python3-venv pipx ufw fail2ban ca-certificates gnupg
 ok "Base packages installed"
 
 # ---------------------------------------------------------------------------
@@ -129,6 +129,11 @@ warn "Oracle Cloud also enforces a Security List firewall at the cloud level —
 # ---------------------------------------------------------------------------
 # 6. Bring the Docker stack up
 # ---------------------------------------------------------------------------
+if systemctl is-active --quiet nginx 2>/dev/null; then
+  warn "Host nginx is running and would block the dashboard container's port 80 — stopping it."
+  systemctl stop nginx
+  systemctl disable nginx
+fi
 info "Starting containers via docker compose..."
 (cd "${POLKORP_DIR}" && docker compose up -d)
 ok "Stack is up (dashboard, backend, ollama)"
