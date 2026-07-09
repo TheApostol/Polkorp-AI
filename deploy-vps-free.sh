@@ -58,7 +58,7 @@ fi
 info "Updating apt and installing base packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y curl wget git nginx python3-pip python3-venv pipx ufw fail2ban ca-certificates gnupg iptables-persistent
+apt-get install -y curl wget git nginx python3-pip python3-venv pipx ufw fail2ban ca-certificates gnupg
 ok "Base packages installed"
 
 # ---------------------------------------------------------------------------
