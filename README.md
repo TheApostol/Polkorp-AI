@@ -23,14 +23,15 @@ what you're allowed to ask for.
                          ┌─────────────────────────┐
                          │      dashboard.html      │
                          │  (single-file, offline)  │
-                         │  login · router · cards  │
+                         │ login · router · agents  │
                          └────────────┬────────────┘
-                                      │ (planned: HTTP calls once
-                                      │  a real backend exists)
+                                      │ HTTP (fetch, CORS)
                                       ▼
         ┌─────────────────────────────────────────────────────┐
-        │                     backend (stub)                   │
-        │         FastAPI on :5050 — not yet implemented        │
+        │              backend/app.py (FastAPI, :5050)          │
+        │   agents: terminal, code (live via Ollama)            │
+        │           image, restoration, upscaling, osint,       │
+        │           orchestrate (honest "not available here")   │
         └──────┬───────────────┬───────────────┬───────────────┘
                │               │               │
                ▼               ▼               ▼
@@ -48,15 +49,25 @@ what you're allowed to ask for.
         └────────────────────┘      └───────────────────────────┘
 ```
 
+The `image`/`restoration`/`upscaling`/`osint` agents are only "live" once
+their tool is actually deployed and wired into `backend/app.py` (currently
+just `code` and `terminal` are live, since only Ollama runs by default) —
+they respond honestly that they need GPU tools instead of pretending to
+work.
+
 ## Files in this repo
 
 | File | Purpose |
 |---|---|
-| `dashboard.html` | The master dashboard. Single HTML file, zero dependencies, works offline. |
+| `dashboard.html` | The master dashboard. Single HTML file, zero dependencies, works offline, calls the backend for live agents when reachable. |
+| `backend/app.py` | FastAPI backend defining the platform's agents (Code, Terminal Chat live via Ollama; others honest-unavailable) and `/api/status`. |
+| `backend/requirements.txt` | Backend Python deps (fastapi, uvicorn, httpx, psutil). |
 | `install-mac-light.sh` | Lightweight local installer (Ollama + Lama Cleaner) for low-spec Macs. |
 | `deploy-vps-full.sh` | Full production deploy for an Ubuntu 22.04 + NVIDIA GPU VPS. |
-| `docker-compose.yml` | The 5-service stack the VPS deploy script brings up. |
-| `fooocus/Dockerfile` | Build context for the `fooocus` compose service. |
+| `docker-compose.yml` | The 5-service GPU stack `deploy-vps-full.sh` brings up. |
+| `deploy-vps-free.sh` | Free-tier deploy for a CPU-only Oracle Always Free (or similar) VPS. |
+| `docker-compose.free.yml` | The 3-service CPU-only stack `deploy-vps-free.sh` brings up. |
+| `fooocus/Dockerfile` | Build context for the `fooocus` compose service (GPU stack only). |
 | `kaggle-gpu-notebook.ipynb` | Runs Ollama + Lama Cleaner + Fooocus on Kaggle's free T4 GPU. |
 | `huggingface-orchestrator/app.py` | Gradio demo of the router logic, deployable to HF Spaces for free. |
 | `polkorpai.html` | An earlier, standalone dashboard build (kept as-is, not superseded). |
@@ -93,10 +104,29 @@ This installs Docker, the NVIDIA Container Toolkit, brings up all 5
 containers (dashboard, backend stub, ollama, lama, fooocus), opens the
 firewall (22/80/443/5050), and pulls the base models.
 
-> **Note:** the `backend` service is currently a placeholder (a bare
-> Python HTTP server on :5050) — there's no FastAPI application in this
-> batch of files yet. `dashboard.html`'s router is a client-side
-> simulation until that backend exists to actually call the tools.
+> **Note:** the `backend` service runs the real `backend/app.py` FastAPI
+> app. `Code` and `Terminal Chat` are live (backed by Ollama); `Image`,
+> `Restoration`, `Upscaling`, and `OSINT` currently respond that they
+> need tools this VPS doesn't have installed, rather than pretending to
+> work — wire up `lama`/`fooocus` (GPU stack only) or extend `app.py` to
+> make more agents live.
+
+### Option B2 — VPS (free-tier, CPU-only)
+
+For a free CPU-only VPS (e.g. Oracle Cloud Always Free, no GPU):
+
+```bash
+scp dashboard.html docker-compose.free.yml deploy-vps-free.sh your-server:/root/
+scp -r backend your-server:/root/
+ssh your-server
+sudo bash deploy-vps-free.sh
+```
+
+Brings up 3 containers (dashboard, backend, ollama — no lama/fooocus,
+since those need GPU tooling this path doesn't have). `Code` and
+`Terminal Chat` agents work for real, CPU-inference (slow but
+functional); other agent categories tell you honestly they need the
+Kaggle GPU notebook instead.
 
 ### Option C — Free-tier cloud compute
 
@@ -105,10 +135,10 @@ firewall (22/80/443/5050), and pulls the base models.
   Lama Cleaner + a public Fooocus link, no ngrok needed, for up to
   ~9-12h per session within your 30h/week quota.
 - **Hugging Face Spaces**: create a new Space (SDK: Gradio), upload
-  `huggingface-orchestrator/app.py` and `huggingface-orchestrator/requirements.txt`.
-  This deploys a public demo of the router logic — useful for showing the
-  orchestration concept, not for running the actual tools (those need
-  real GPU compute, which free Spaces CPU tier doesn't have).
+  `huggingface-orchestrator/app.py` plus a `requirements.txt` containing
+  `gradio`. This deploys a public demo of the router logic — useful for
+  showing the orchestration concept, not for running the actual tools
+  (those need real GPU compute, which free Spaces CPU tier doesn't have).
 
 ## Dashboard usage
 
@@ -120,39 +150,47 @@ firewall (22/80/443/5050), and pulls the base models.
 4. `1`-`6` opens a card, `/` focuses the prompt, `` ` `` toggles the
    terminal panel, `Esc` closes whatever's open.
 
-## AI Router logic
+## AI Router + Agents
 
-The router scans your input for keywords and picks a tool. If more than
-one category matches (or the input mentions "audit"/"review"/"chain"),
-it switches to **pipeline mode** and chains the matched tools in order,
-showing live step-by-step progress.
+The router scans your input for keywords and picks a category. If more
+than one category matches (or the input mentions "audit"/"review"/
+"chain"), it switches to **pipeline mode** and shows a simulated
+step-by-step chain (no orchestration engine calls multiple agents yet —
+each step still needs to be run as its own single request today).
 
-| Keywords contain... | Routes to |
-|---|---|
-| code, exploit, virus, script, payload | DeepSeek Coder V2 |
-| image, generate, draw, art | Fooocus |
-| clean, remove, inpaint | Lama Cleaner |
-| upscale, enhance, 4k | Upscayl |
-| hack, osint, recon | OSINT Module |
-| audit, review, chain | Orchestrator (pipeline mode) |
-| *(no match)* | Terminal Chat (Llama 3.1 8B) |
+| Keywords contain... | Category | Backend agent | Live? |
+|---|---|---|---|
+| code, exploit, virus, script, payload | Code | `code` | ✅ via Ollama |
+| image, generate, draw, art | Image | `image` | ❌ needs GPU (Fooocus) |
+| clean, remove, inpaint | Restoration | `restoration` | ❌ needs Lama Cleaner |
+| upscale, enhance, 4k | Upscaling | `upscaling` | ❌ needs Upscayl |
+| hack, osint, recon | Hack/OSINT | `osint` | ❌ no toolchain deployed |
+| audit, review, chain | Orchestrate | `orchestrate` | ❌ UI simulation only |
+| *(no match)* | Terminal Chat | `terminal` | ✅ via Ollama |
 
-The exact same table is reimplemented in `huggingface-orchestrator/app.py`
-for the HF Spaces demo — the two are kept in sync by hand, there's no
-shared build step between the JS and Python versions.
+For single-category requests, `dashboard.html` calls the live backend
+agent for real via `POST /api/chat` and logs the reply in the terminal
+panel (press `` ` `` to view it) plus a toast preview. Agents marked
+"not live" return an honest explanation instead of a fabricated result.
 
-## API endpoints (planned)
+The same category table is reimplemented in
+`huggingface-orchestrator/app.py` for the HF Spaces demo — kept in sync
+by hand, no shared build step between the JS and Python versions.
 
-No backend exists yet. Once `backend/` has a real FastAPI app behind
-`docker-compose.yml`'s `backend` service, the intended surface is:
+## API endpoints (backend/app.py)
 
-- `POST /api/route` — takes `{ "text": "..." }`, returns the routing
-  decision (mirrors the client-side `route()` logic today).
-- `POST /api/run/{tool}` — proxies a request to the matched tool's own
-  API (Ollama's `/api/generate`, Fooocus's Gradio API, etc.).
-- `GET /api/status` — powers the dashboard's VPS Status widget (GPU,
-  RAM, loaded models, uptime). Until this exists, the widget honestly
-  shows "Awaiting deployment" rather than fabricated numbers.
+- `GET /api/agents` — lists all agents and whether each is currently live.
+- `POST /api/chat` — `{ "agent": "code", "message": "..." }` → calls the
+  agent's Ollama system prompt if live, or returns its
+  `unavailable_reason` if not.
+- `GET /api/status` — powers the dashboard's VPS Status widget: RAM,
+  Ollama reachability + loaded models, uptime. `dashboard.html` falls
+  back to an honest "Awaiting deployment" state if this is unreachable
+  (e.g. testing the file standalone via `file://`, or before deploy).
+
+CORS is wide open (`allow_origins=["*"]`) since this is a private
+single-user tool with no per-user auth — see Security notes below before
+exposing it beyond your own use.
 
 ## Security notes
 
@@ -198,6 +236,18 @@ No backend exists yet. Once `backend/` has a real FastAPI app behind
   upstream `lllyasviel/Fooocus` repo at build time, so it needs internet
   access during `docker compose up --build` and enough disk space for the
   models Fooocus downloads on first run.
+- **Dashboard shows "Backend unreachable"**: `dashboard.html` calls the
+  backend on port `5050` of whatever host it's served from — that port
+  needs to be open both in the host firewall (`ufw`, handled by the
+  deploy scripts) *and* in your cloud provider's own firewall/security
+  list (e.g. Oracle Cloud Security Lists don't inherit from `ufw` —
+  they're separate). Also give the `backend` container a minute on first
+  boot; it runs `pip install` before starting.
+- **Voice dictation errors "Microphone blocked"**: browsers only allow
+  microphone access on HTTPS or `localhost`, never plain HTTP. This is a
+  browser security policy, not a bug — it'll work once SSL/a domain is
+  set up in front of the VPS, or when testing `dashboard.html` locally
+  via `file://`.
 
 ---
 

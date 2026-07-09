@@ -24,7 +24,9 @@ services:
     depends_on:
       - backend
 
-  # Placeholder — same stub as the full stack, see docker-compose.yml.
+  # Real FastAPI backend — see backend/app.py. Defines the platform's
+  # agents (Code, Terminal Chat live via Ollama; Image/Restoration/
+  # Upscaling/OSINT respond honestly that they need tools not on this box).
   backend:
     image: python:3.11-slim
     container_name: polkorp-backend
@@ -34,9 +36,14 @@ services:
       - ./backend:/app
     ports:
       - "5050:5050"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.1:8b
     command: >
-      sh -c "echo 'POLKORP AI backend placeholder — add a FastAPI app to ./backend and update this command.'
-      && python3 -m http.server 5050"
+      sh -c "pip install --quiet --no-cache-dir -r requirements.txt
+      && uvicorn app:app --host 0.0.0.0 --port 5050"
+    depends_on:
+      - ollama
     networks:
       - polkorp-net
 
