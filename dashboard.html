@@ -1047,10 +1047,21 @@ function toggleCard(id, forceOpen){
 function closeAllCards(){ document.querySelectorAll(".card.open").forEach(function(c){ c.classList.remove("open"); }); }
 document.addEventListener("click", function(e){ if (!e.target.closest(".card")) closeAllCards(); });
 
-var forcedAgent = null; // { category, tool } | null — set when a submenu tool is picked directly
+// Submenu items that name a real Ollama model get routed straight to that
+// model; everything else (Fooocus, Lama Cleaner, "Terminal Chat", etc.)
+// just picks the agent and lets the backend auto-select the best model
+// it actually has pulled.
+var TOOL_TO_MODEL = {
+  "DeepSeek Coder V2": "deepseek-coder-v2",
+  "Llama 3.1 8B": "llama3.1:8b",
+  "Mistral": "mistral",
+  "CodeQwen": "codeqwen"
+};
+
+var forcedAgent = null; // { category, tool, model } | null — set when a submenu tool is picked directly
 
 function launchTool(tool, category){
-  forcedAgent = { category: category, tool: tool };
+  forcedAgent = { category: category, tool: tool, model: TOOL_TO_MODEL[tool] || null };
   closeAllCards();
   toast(t("toastLaunching")(tool), "info");
   var input = document.getElementById("commandInput");
@@ -1135,16 +1146,19 @@ function fetchJSON(url, opts, timeoutMs){
   }, function(err){ clearTimeout(timer); throw err; });
 }
 
-function askAgent(category, message){
+function askAgent(category, message, modelOverride){
   var agentKey = CATEGORY_TO_AGENT[category] || "terminal";
   termLine(message, "t-cmd");
   termLine(t("termThinking")(agentKey), "t-out");
+  var payload = { agent: agentKey, message: message, lang: LANG };
+  if (modelOverride) payload.model = modelOverride;
   fetchJSON(API_BASE + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agent: agentKey, message: message, lang: LANG })
+    body: JSON.stringify(payload)
   }, 130000).then(function(data){
-    termLine(data.reply, "t-out");
+    var line = data.model ? "[" + data.model + "] " + data.reply : data.reply;
+    termLine(line, "t-out");
     toast(data.reply.length > 90 ? data.reply.slice(0, 90) + "…" : data.reply, data.live ? "success" : "warning");
   }).catch(function(){
     termLine(t("termBackendDown")(API_BASE), "t-out");
@@ -1167,7 +1181,7 @@ function handleCommand(text){
       document.getElementById("commandInput").placeholder = t("placeholders")[phIndex];
       pushHistory(text, picked.category, picked.tool);
       toast(t("toastRouting")(picked.tool, picked.category), "success");
-      askAgent(picked.category, text);
+      askAgent(picked.category, text, picked.model);
       return;
     }
 

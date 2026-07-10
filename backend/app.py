@@ -49,6 +49,11 @@ AGENTS = {
             "assistant running entirely on the user's own hardware. Answer "
             "directly and concisely."
         ),
+        # Preference order — the backend auto-picks the best one that's
+        # actually pulled into Ollama right now, so this list keeps working
+        # whether only llama3.1:8b is loaded (free CPU tier) or the full
+        # set from deploy-vps-full.sh (GPU tier) is available.
+        "model_preference": ["llama3.1:8b", "mistral"],
     },
     "code": {
         "name": "Code Agent",
@@ -61,6 +66,7 @@ AGENTS = {
             "tradeoffs briefly when relevant. Code itself, variable names, "
             "and comments stay in English regardless of response language."
         ),
+        "model_preference": ["deepseek-coder-v2", "codeqwen", "mistral", "llama3.1:8b"],
     },
     "image": {
         "name": "Fooocus (Image)",
@@ -152,6 +158,7 @@ class ChatRequest(BaseModel):
     agent: str
     message: str
     lang: str = "en"
+    model: str | None = None  # explicit override from a submenu pick; None = auto-select
 
 
 @app.get("/api/agents")
@@ -160,6 +167,34 @@ def list_agents():
         key: {"name": a["name"], "live": a["live"]}
         for key, a in AGENTS.items()
     }
+
+
+async def available_models(client: httpx.AsyncClient) -> list[str]:
+    try:
+        resp = await client.get(f"{OLLAMA_URL}/api/tags")
+        resp.raise_for_status()
+        return [m["name"] for m in resp.json().get("models", [])]
+    except httpx.HTTPError:
+        return []
+
+
+def pick_model(preference: list[str], available: list[str], override: str | None) -> str:
+    """Pick the best model actually pulled into Ollama right now.
+
+    Honors an explicit override (from a submenu pick) if it's really
+    available; otherwise walks the agent's preference list and returns the
+    first one that's pulled; falls back to whatever IS available, then to
+    the OLLAMA_MODEL env default as a last resort (Ollama will error
+    clearly if even that isn't pulled).
+    """
+    if override and override in available:
+        return override
+    for candidate in preference:
+        if candidate in available:
+            return candidate
+    if available:
+        return available[0]
+    return OLLAMA_MODEL
 
 
 @app.post("/api/chat")
@@ -176,10 +211,12 @@ async def chat(req: ChatRequest):
     system_prompt = agent["system_prompt"] + " " + LANG_INSTRUCTION[lang]
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
+            models = await available_models(client)
+            model = pick_model(agent.get("model_preference", []), models, req.model)
             resp = await client.post(
                 f"{OLLAMA_URL}/api/generate",
                 json={
-                    "model": OLLAMA_MODEL,
+                    "model": model,
                     "prompt": req.message,
                     "system": system_prompt,
                     "stream": False,
@@ -189,18 +226,19 @@ async def chat(req: ChatRequest):
             data = resp.json()
             return {
                 "agent": agent["name"],
+                "model": model,
                 "live": True,
                 "reply": data.get("response", "").strip() or "(empty response)",
             }
     except (httpx.HTTPError, httpx.TimeoutException) as exc:
         detail = (
-            f"Couldn't reach Ollama ({OLLAMA_MODEL}) — it may still be "
-            f"loading the model on this CPU-only box, or the pull "
-            f"never finished. Details: {exc}"
+            f"Couldn't reach Ollama — it may still be loading a model on "
+            f"this CPU-only box, or no model has finished pulling yet. "
+            f"Details: {exc}"
             if lang == "en" else
-            f"No se pudo conectar con Ollama ({OLLAMA_MODEL}) — puede que "
-            f"todavía esté cargando el modelo en este servidor sin GPU, o "
-            f"que la descarga nunca haya terminado. Detalles: {exc}"
+            f"No se pudo conectar con Ollama — puede que todavía esté "
+            f"cargando un modelo en este servidor sin GPU, o que ninguna "
+            f"descarga haya terminado. Detalles: {exc}"
         )
         return {
             "agent": agent["name"],
