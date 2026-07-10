@@ -52,8 +52,10 @@ AGENTS = {
         # Preference order — the backend auto-picks the best one that's
         # actually pulled into Ollama right now, so this list keeps working
         # whether only llama3.1:8b is loaded (free CPU tier) or the full
-        # set from deploy-vps-full.sh (GPU tier) is available.
-        "model_preference": ["llama3.1:8b", "mistral"],
+        # set from deploy-vps-full.sh (GPU tier) is available. qwen2.5:0.5b
+        # is last resort — an 8B model needs ~5GB+ RAM just to load and
+        # will OOM-crash on a 1GB free-tier box even though it's "pulled".
+        "model_preference": ["llama3.1:8b", "mistral", "qwen2.5:0.5b"],
     },
     "code": {
         "name": "Code Agent",
@@ -66,7 +68,7 @@ AGENTS = {
             "tradeoffs briefly when relevant. Code itself, variable names, "
             "and comments stay in English regardless of response language."
         ),
-        "model_preference": ["deepseek-coder-v2", "codeqwen", "mistral", "llama3.1:8b"],
+        "model_preference": ["deepseek-coder-v2", "codeqwen", "mistral", "llama3.1:8b", "qwen2.5:0.5b"],
     },
     "image": {
         "name": "Fooocus (Image)",

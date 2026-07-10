@@ -139,12 +139,19 @@ info "Starting containers via docker compose..."
 ok "Stack is up (dashboard, backend, ollama)"
 
 # ---------------------------------------------------------------------------
-# 7. Pull a small model — this host has no GPU and 12GB RAM total, so stick
-#    to something modest. llama3.1:8b at default (q4) quantization fits.
+# 7. Pull a small model. This host has no GPU; RAM varies a lot by which
+#    free-tier shape you actually got approved for. An 8B model (llama3.1,
+#    mistral) needs ~5GB+ RAM just to load — on a 1GB E2.1.Micro box it
+#    pulls successfully but OOM-crashes on every single inference request
+#    (confirmed: "ggml_aligned_malloc: insufficient memory"). qwen2.5:0.5b
+#    (~400MB) actually runs on a 1GB box. If you're on a bigger free-tier
+#    shape (e.g. 12GB Ampere A1), feel free to also pull llama3.1:8b
+#    manually afterward — it'll be picked automatically once pulled, since
+#    backend/app.py auto-selects the best model that's actually loadable.
 # ---------------------------------------------------------------------------
-info "Pulling llama3.1:8b into Ollama (CPU inference — expect it to be slow but functional)..."
-if docker compose -f "${POLKORP_DIR}/docker-compose.yml" exec -T ollama ollama pull llama3.1:8b; then
-  ok "llama3.1:8b pulled"
+info "Pulling qwen2.5:0.5b into Ollama (small enough to run on low-RAM free-tier boxes)..."
+if docker compose -f "${POLKORP_DIR}/docker-compose.yml" exec -T ollama ollama pull qwen2.5:0.5b; then
+  ok "qwen2.5:0.5b pulled"
 else
   warn "Model pull failed — check 'docker compose logs ollama' and retry manually later."
 fi
