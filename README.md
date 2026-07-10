@@ -30,7 +30,8 @@ what you're allowed to ask for.
         ┌─────────────────────────────────────────────────────┐
         │              backend/app.py (FastAPI, :5050)          │
         │   agents: terminal, code (live via Ollama)            │
-        │           image, restoration, upscaling, osint,       │
+        │           osint (live — real passive recon, no GPU)   │
+        │           image, restoration, upscaling,               │
         │           orchestrate (honest "not available here")   │
         └──────┬───────────────┬───────────────┬───────────────┘
                │               │               │
@@ -49,11 +50,12 @@ what you're allowed to ask for.
         └────────────────────┘      └───────────────────────────┘
 ```
 
-The `image`/`restoration`/`upscaling`/`osint` agents are only "live" once
-their tool is actually deployed and wired into `backend/app.py` (currently
-just `code` and `terminal` are live, since only Ollama runs by default) —
-they respond honestly that they need GPU tools instead of pretending to
-work.
+The `image`/`restoration`/`upscaling` agents are only "live" once their
+GPU tool is actually deployed and wired into `backend/app.py` — they
+respond honestly that they need GPU tools instead of pretending to work.
+`osint` is different: it's real passive recon (WHOIS, DNS, certificate-
+transparency subdomain enumeration, HTTP fingerprinting) that needs no
+GPU, so it's live on any box — free CPU tier included.
 
 ## Files in this repo
 
@@ -61,7 +63,7 @@ work.
 |---|---|
 | `dashboard.html` | The master dashboard. Single HTML file, zero dependencies, works offline, calls the backend for live agents when reachable. |
 | `backend/app.py` | FastAPI backend defining the platform's agents (Code, Terminal Chat live via Ollama; others honest-unavailable) and `/api/status`. |
-| `backend/requirements.txt` | Backend Python deps (fastapi, uvicorn, httpx, psutil). |
+| `backend/requirements.txt` | Backend Python deps (fastapi, uvicorn, httpx, psutil, dnspython, python-whois). |
 | `install-mac-light.sh` | Lightweight local installer (Ollama + Lama Cleaner) for low-spec Macs. |
 | `deploy-vps-full.sh` | Full production deploy for an Ubuntu 22.04 + NVIDIA GPU VPS. |
 | `docker-compose.yml` | The 5-service GPU stack `deploy-vps-full.sh` brings up. |
@@ -105,11 +107,11 @@ containers (dashboard, backend stub, ollama, lama, fooocus), opens the
 firewall (22/80/443/5050), and pulls the base models.
 
 > **Note:** the `backend` service runs the real `backend/app.py` FastAPI
-> app. `Code` and `Terminal Chat` are live (backed by Ollama); `Image`,
-> `Restoration`, `Upscaling`, and `OSINT` currently respond that they
-> need tools this VPS doesn't have installed, rather than pretending to
-> work — wire up `lama`/`fooocus` (GPU stack only) or extend `app.py` to
-> make more agents live.
+> app. `Code`, `Terminal Chat` (backed by Ollama), and `OSINT` (passive
+> recon, no GPU needed) are live; `Image`, `Restoration`, and `Upscaling`
+> currently respond that they need tools this VPS doesn't have installed,
+> rather than pretending to work — wire up `lama`/`fooocus` (GPU stack
+> only) or extend `app.py` to make more agents live.
 
 ### Option B2 — VPS (free-tier, CPU-only)
 
@@ -164,7 +166,7 @@ each step still needs to be run as its own single request today).
 | image, generate, draw, art | Image | `image` | ❌ needs GPU (Fooocus) |
 | clean, remove, inpaint | Restoration | `restoration` | ❌ needs Lama Cleaner |
 | upscale, enhance, 4k | Upscaling | `upscaling` | ❌ needs Upscayl |
-| hack, osint, recon | Hack/OSINT | `osint` | ❌ no toolchain deployed |
+| hack, osint, recon | Hack/OSINT | `osint` | ✅ real passive recon, no GPU |
 | audit, review, chain | Orchestrate | `orchestrate` | ❌ UI simulation only |
 | *(no match)* | Terminal Chat | `terminal` | ✅ via Ollama |
 
@@ -176,6 +178,19 @@ panel (press `` ` `` to view it) plus a toast preview. Agents marked
 The same category table is reimplemented in
 `huggingface-orchestrator/app.py` for the HF Spaces demo — kept in sync
 by hand, no shared build step between the JS and Python versions.
+
+### OSINT agent (passive recon)
+
+Type something like `recon example.com` or `osint on example.com` and the
+backend extracts the domain and runs real, **passive-only** reconnaissance:
+WHOIS (registrar, creation/expiry dates), DNS (A/AAAA/MX/NS/TXT records),
+subdomain enumeration via certificate-transparency logs (crt.sh), and an
+HTTP header fingerprint (status, server, X-Powered-By). It only queries
+public information sources about the domain — it never touches, scans, or
+attacks the target itself, and needs no GPU. WHOIS lookups use raw sockets
+(port 43) — this may be blocked by some network policies even though DNS
+and HTTPS work fine; the report degrades gracefully (marks that section
+"Not available") rather than failing the whole request.
 
 ## API endpoints (backend/app.py)
 

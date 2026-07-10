@@ -5,17 +5,23 @@ Defines the platform's distinct agents and exposes them over HTTP for
 dashboard.html to call. Each agent has its own persona/system prompt.
 Agents backed by Ollama (code, terminal) are live on any box running this
 service. Agents that need GPU tools not installed on this box (image,
-restoration, upscaling, osint) respond honestly that they're unavailable
-here and point at the Kaggle GPU notebook instead of pretending to work.
+restoration, upscaling) respond honestly that they're unavailable here
+and point at the Kaggle GPU notebook instead of pretending to work. OSINT
+is a real passive-recon tool agent (WHOIS/DNS/subdomains/HTTP fingerprint)
+that needs no GPU, so it runs for real on any box.
 
 A Simple Corp.
 """
 
+import asyncio
 import os
+import re
 import time
 
+import dns.resolver
 import httpx
 import psutil
+import whois as whois_lib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -122,19 +128,7 @@ AGENTS = {
     },
     "osint": {
         "name": "OSINT Module",
-        "live": False,
-        "unavailable_reason": {
-            "en": (
-                "The OSINT/recon module isn't installed on this box yet — no "
-                "tooling is wired up here. This category is a placeholder in "
-                "the router until a real OSINT toolchain is deployed."
-            ),
-            "es": (
-                "El módulo de OSINT/recon todavía no está instalado en este "
-                "servidor. Esta categoría es un placeholder en el router "
-                "hasta que se despliegue un toolchain de OSINT real."
-            ),
-        },
+        "live": True,  # real passive recon — see run_osint(), no GPU needed
     },
     "orchestrate": {
         "name": "Orchestrator",
@@ -154,6 +148,194 @@ AGENTS = {
         },
     },
 }
+
+# ---------------------------------------------------------------------------
+# OSINT — real passive recon (WHOIS, DNS, certificate-transparency subdomain
+# enumeration, HTTP fingerprinting). Passive/read-only only — this queries
+# public information sources about a domain, it never touches or attacks
+# anything. No GPU needed, so it runs on any box including the free tier.
+# ---------------------------------------------------------------------------
+DOMAIN_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?"
+    r"([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+)"
+)
+
+OSINT_LABELS = {
+    "en": {
+        "title": "Passive recon",
+        "whois": "WHOIS",
+        "dns": "DNS",
+        "http": "HTTP",
+        "subdomains": "Subdomains found",
+        "registrar": "Registrar",
+        "created": "Created",
+        "expires": "Expires",
+        "status": "Status",
+        "server": "Server",
+        "not_available": "Not available",
+        "none": "—",
+        "no_subdomains": "None found via crt.sh (or crt.sh was too slow to respond)",
+        "no_domain": (
+            "I couldn't find a domain in your message — try something like "
+            "'recon example.com'."
+        ),
+    },
+    "es": {
+        "title": "Recon pasivo",
+        "whois": "WHOIS",
+        "dns": "DNS",
+        "http": "HTTP",
+        "subdomains": "Subdominios encontrados",
+        "registrar": "Registrador",
+        "created": "Creado",
+        "expires": "Expira",
+        "status": "Estado",
+        "server": "Servidor",
+        "not_available": "No disponible",
+        "none": "—",
+        "no_subdomains": "Ninguno encontrado vía crt.sh (o crt.sh tardó demasiado en responder)",
+        "no_domain": (
+            "No encontré ningún dominio en tu mensaje — probá algo como "
+            "'recon example.com'."
+        ),
+    },
+}
+
+
+def extract_domain(text: str) -> str | None:
+    match = DOMAIN_RE.search(text)
+    if not match:
+        return None
+    return match.group(1).lower().rstrip(".")
+
+
+def dns_lookup(domain: str) -> dict:
+    records = {}
+    for rtype in ["A", "AAAA", "MX", "NS", "TXT"]:
+        try:
+            answers = dns.resolver.resolve(domain, rtype, lifetime=5)
+            records[rtype] = [str(r) for r in answers]
+        except Exception:
+            records[rtype] = []
+    return records
+
+
+def whois_lookup(domain: str) -> dict:
+    try:
+        w = whois_lib.whois(domain)
+        return {
+            "registrar": w.registrar,
+            "creation_date": str(w.creation_date) if w.creation_date else None,
+            "expiration_date": str(w.expiration_date) if w.expiration_date else None,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def subdomain_enum(client: httpx.AsyncClient, domain: str) -> list[str]:
+    try:
+        resp = await client.get(
+            f"https://crt.sh/?q=%25.{domain}&output=json", timeout=20.0
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        names = set()
+        for entry in data:
+            for name in entry.get("name_value", "").split("\n"):
+                name = name.strip().lower()
+                if name and not name.startswith("*"):
+                    names.add(name)
+        return sorted(names)[:30]
+    except Exception:
+        return []
+
+
+async def http_fingerprint(client: httpx.AsyncClient, domain: str) -> dict:
+    for scheme in ("https", "http"):
+        try:
+            resp = await client.get(
+                f"{scheme}://{domain}", timeout=10.0, follow_redirects=True
+            )
+            return {
+                "status": resp.status_code,
+                "server": resp.headers.get("server", "unknown"),
+                "powered_by": resp.headers.get("x-powered-by", ""),
+            }
+        except Exception:
+            continue
+    return {}
+
+
+def format_osint_report(
+    domain: str, dns_records: dict, whois_data: dict, subdomains: list, fingerprint: dict, lang: str
+) -> str:
+    L = OSINT_LABELS[lang]
+    lines = [f"🔍 {L['title']} — {domain}", "", f"{L['whois']}:"]
+    if whois_data.get("error"):
+        lines.append(f"  {L['not_available']} ({whois_data['error']})")
+    else:
+        lines.append(f"  {L['registrar']}: {whois_data.get('registrar') or L['none']}")
+        lines.append(f"  {L['created']}: {whois_data.get('creation_date') or L['none']}")
+        lines.append(f"  {L['expires']}: {whois_data.get('expiration_date') or L['none']}")
+
+    lines.append("")
+    lines.append(f"{L['dns']}:")
+    for rtype in ["A", "AAAA", "MX", "NS", "TXT"]:
+        vals = dns_records.get(rtype) or []
+        lines.append(f"  {rtype}: {', '.join(vals) if vals else L['none']}")
+
+    if fingerprint:
+        lines.append("")
+        lines.append(f"{L['http']}:")
+        lines.append(f"  {L['status']}: {fingerprint.get('status')}")
+        lines.append(f"  {L['server']}: {fingerprint.get('server')}")
+        if fingerprint.get("powered_by"):
+            lines.append(f"  X-Powered-By: {fingerprint['powered_by']}")
+
+    lines.append("")
+    lines.append(f"{L['subdomains']} ({len(subdomains)}):")
+    if subdomains:
+        lines.extend(f"  - {s}" for s in subdomains[:20])
+    else:
+        lines.append(f"  {L['no_subdomains']}")
+
+    return "\n".join(lines)
+
+
+async def run_osint(message: str, lang: str) -> dict:
+    domain = extract_domain(message)
+    if not domain:
+        return {
+            "agent": AGENTS["osint"]["name"],
+            "live": True,
+            "reply": OSINT_LABELS[lang]["no_domain"],
+        }
+
+    # dns_lookup/whois_lookup do blocking socket I/O — offload to a thread
+    # so a slow WHOIS/DNS server doesn't freeze the event loop (and every
+    # other request being served) while we wait on it.
+    loop = asyncio.get_event_loop()
+
+    async def bounded_dns():
+        try:
+            return await asyncio.wait_for(loop.run_in_executor(None, dns_lookup, domain), timeout=30.0)
+        except asyncio.TimeoutError:
+            return {}
+
+    async def bounded_whois():
+        try:
+            return await asyncio.wait_for(loop.run_in_executor(None, whois_lookup, domain), timeout=15.0)
+        except asyncio.TimeoutError:
+            return {"error": "timed out"}
+
+    async with httpx.AsyncClient() as client:
+        dns_records, whois_data, subdomains, fingerprint = await asyncio.gather(
+            bounded_dns(), bounded_whois(), subdomain_enum(client, domain), http_fingerprint(client, domain)
+        )
+
+    reply = format_osint_report(domain, dns_records, whois_data, subdomains, fingerprint, lang)
+    return {"agent": AGENTS["osint"]["name"], "live": True, "reply": reply}
 
 
 class ChatRequest(BaseModel):
@@ -202,6 +384,10 @@ def pick_model(preference: list[str], available: list[str], override: str | None
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     lang = req.lang if req.lang in LANG_INSTRUCTION else "en"
+
+    if req.agent == "osint":
+        return await run_osint(req.message, lang)
+
     agent = AGENTS.get(req.agent, AGENTS["terminal"])
     if not agent["live"]:
         return {
