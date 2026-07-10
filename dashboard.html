@@ -117,6 +117,7 @@ header.top{padding:40px 0 26px;border-bottom:1px solid var(--border-soft)}
 .icon-btn{width:38px;height:38px;border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--text-soft);transition:border-color var(--ease),color var(--ease),transform var(--ease)}
 .icon-btn:hover{border-color:var(--primary);color:var(--primary);transform:translateY(-1px)}
 .icon-btn svg{width:16px;height:16px}
+.lang-btn{font-size:11px;font-weight:700;letter-spacing:.05em}
 
 /* ============================== COMMAND ============================== */
 .command{margin:44px 0 34px}
@@ -380,6 +381,7 @@ header.top{padding:40px 0 26px;border-bottom:1px solid var(--border-soft)}
             <span class="dot" id="headerDot"></span> <span id="headerStatusText">Orchestrator Online</span>
           </div>
           <div class="header-actions">
+            <button class="icon-btn lang-btn" id="langToggle" title="Switch language / Cambiar idioma" aria-label="Switch language">EN</button>
             <button class="icon-btn" id="folderToggle" title="Connect a local folder" aria-label="Connect a local folder">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
             </button>
@@ -466,6 +468,222 @@ header.top{padding:40px 0 26px;border-bottom:1px solid var(--border-soft)}
 <script>
 (function(){
 "use strict";
+
+/* ==========================================================================
+   I18N — English / Spanish. Persisted in localStorage, defaults to the
+   browser's language. Covers the dashboard chrome (labels, toasts, card
+   subtitles) — tool/model names stay as proper nouns in both languages.
+   ========================================================================== */
+var STRINGS = {
+  en: {
+    loginLine1: "Opening the world of AI for you.",
+    accessLabel: "Enter access code",
+    accessError: "Invalid access code.",
+    tagline1: "Opening the world of AI for you.",
+    tagline2: "No restrictions. No logs. No filters. Just you.",
+    headerStatus: "Orchestrator Online",
+    commandLabel: "What do you want to orchestrate?",
+    placeholders: [
+      "Write a Python exploit...",
+      "Generate a cyberpunk city...",
+      "Clean this image and upscale to 4K...",
+      "Audit and chain multiple tools...",
+      "Recon a target domain..."
+    ],
+    folderNotConnected: "No local folder connected — ",
+    folderBrowse: "browse",
+    folderConnectedPrefix: "Connected: ",
+    folderConnectedSuffix: function(count){ return " (" + count + " items) — "; },
+    folderChange: "change",
+    pipelineHead: "PIPELINE ORCHESTRATOR",
+    cardTitles: {
+      code: "CODE", image: "IMAGE", video: "VIDEO",
+      hack: "HACK / OSINT", orchestrate: "ORCHESTRATE", tools: "MANUAL TOOLS"
+    },
+    cardSubtitles: {
+      code: "LLMs for development",
+      image: "Generate · Edit · Inpaint · Upscale",
+      video: "Wan2.1 · AnimateDiff · SVD",
+      hack: "Recon · Exploits · Analysis",
+      orchestrate: "Chain multiple AIs",
+      tools: "Direct access"
+    },
+    cardComingSoon: "Coming Soon",
+    historyTitle: "HISTORY",
+    historyEmpty: "No requests yet.",
+    historyClear: "CLEAR HISTORY",
+    terminalHeader: "POLKORP TERMINAL — help · status · clear · history · exit",
+    terminalPlaceholder: "type a command...",
+    termHelp: "Available commands: help, status, clear, history, exit",
+    termStatus: "POLKORP AI — orchestrator online. VPS: awaiting deployment.",
+    termNoHistory: "No history yet.",
+    termNotFound: function(cmd){ return "command not found: " + cmd; },
+    vpsTitle: "VPS STATUS",
+    vpsState: "State", vpsGpuLabel: "GPU", vpsRamLabel: "RAM",
+    vpsModelsLabel: "Models", vpsUptimeLabel: "Uptime",
+    vpsAwaiting: "Awaiting deployment", vpsOnline: "Online",
+    statusBarLeft: "POLKORP AI — Orchestrator Online",
+    sessionActive: "Session active",
+    logout: "logout",
+    toastAccessGranted: "⚡ Access granted. Welcome to POLKORP AI.",
+    toastRouting: function(tool, cat){ return "Routing to " + tool + " (" + cat + ")"; },
+    toastPipeline: function(list){ return "Orchestrating pipeline: " + list; },
+    toastLaunching: function(tool){ return "Launching " + tool + "…"; },
+    toastFolderNeedsChromium: "Local folder access needs a Chromium-based browser.",
+    toastFolderConnected: function(name){ return "Connected local folder “" + name + "”."; },
+    toastFolderError: "Could not open that folder.",
+    toastBackendUnreachable: "Backend unreachable — check the VPS.",
+    termThinking: function(agent){ return "Thinking… (" + agent + ")"; },
+    termBackendDown: function(base){ return "Backend unreachable at " + base + " — is the VPS backend container running?"; },
+    micLabel: "Dictate by voice",
+    micNotSupported: "Voice dictation isn't supported in this browser — try Chrome, Edge, or Safari.",
+    micBlocked: "Microphone blocked — voice dictation needs HTTPS.",
+    micError: function(err){ return "Voice dictation error: " + err; },
+    historyCleared: "History cleared.",
+    speechLang: "en-US"
+  },
+  es: {
+    loginLine1: "Abriendo el mundo de la IA para ti.",
+    accessLabel: "Ingresá el código de acceso",
+    accessError: "Código de acceso inválido.",
+    tagline1: "Abriendo el mundo de la IA para ti.",
+    tagline2: "Sin restricciones. Sin registros. Sin filtros. Solo vos.",
+    headerStatus: "Orquestador en línea",
+    commandLabel: "¿Qué querés orquestar?",
+    placeholders: [
+      "Escribí un exploit en Python...",
+      "Generá una ciudad cyberpunk...",
+      "Limpiá esta imagen y mejorala a 4K...",
+      "Auditá y encadená varias herramientas...",
+      "Hacé recon de un dominio..."
+    ],
+    folderNotConnected: "Ninguna carpeta local conectada — ",
+    folderBrowse: "explorar",
+    folderConnectedPrefix: "Conectado: ",
+    folderConnectedSuffix: function(count){ return " (" + count + " elementos) — "; },
+    folderChange: "cambiar",
+    pipelineHead: "ORQUESTADOR DE PIPELINE",
+    cardTitles: {
+      code: "CÓDIGO", image: "IMAGEN", video: "VIDEO",
+      hack: "HACK / OSINT", orchestrate: "ORQUESTAR", tools: "HERRAMIENTAS"
+    },
+    cardSubtitles: {
+      code: "LLMs para desarrollo",
+      image: "Generar · Editar · Retocar · Mejorar",
+      video: "Wan2.1 · AnimateDiff · SVD",
+      hack: "Recon · Exploits · Análisis",
+      orchestrate: "Encadená varias IAs",
+      tools: "Acceso directo"
+    },
+    cardComingSoon: "Próximamente",
+    historyTitle: "HISTORIAL",
+    historyEmpty: "Todavía no hay solicitudes.",
+    historyClear: "BORRAR HISTORIAL",
+    terminalHeader: "TERMINAL POLKORP — help · status · clear · history · exit",
+    terminalPlaceholder: "escribí un comando...",
+    termHelp: "Comandos disponibles: help, status, clear, history, exit",
+    termStatus: "POLKORP AI — orquestador en línea. VPS: esperando despliegue.",
+    termNoHistory: "Todavía no hay historial.",
+    termNotFound: function(cmd){ return "comando no encontrado: " + cmd; },
+    vpsTitle: "ESTADO DEL VPS",
+    vpsState: "Estado", vpsGpuLabel: "GPU", vpsRamLabel: "RAM",
+    vpsModelsLabel: "Modelos", vpsUptimeLabel: "Actividad",
+    vpsAwaiting: "Esperando despliegue", vpsOnline: "En línea",
+    statusBarLeft: "POLKORP AI — Orquestador en línea",
+    sessionActive: "Sesión activa",
+    logout: "cerrar sesión",
+    toastAccessGranted: "⚡ Acceso concedido. Bienvenido a POLKORP AI.",
+    toastRouting: function(tool, cat){ return "Enrutando a " + tool + " (" + cat + ")"; },
+    toastPipeline: function(list){ return "Orquestando pipeline: " + list; },
+    toastLaunching: function(tool){ return "Iniciando " + tool + "…"; },
+    toastFolderNeedsChromium: "El acceso a carpetas locales necesita un navegador basado en Chromium.",
+    toastFolderConnected: function(name){ return "Carpeta local conectada “" + name + "”."; },
+    toastFolderError: "No se pudo abrir esa carpeta.",
+    toastBackendUnreachable: "Backend inaccesible — revisá el VPS.",
+    termThinking: function(agent){ return "Pensando… (" + agent + ")"; },
+    termBackendDown: function(base){ return "Backend inaccesible en " + base + " — ¿está corriendo el contenedor del backend en el VPS?"; },
+    micLabel: "Dictar por voz",
+    micNotSupported: "El dictado por voz no está soportado en este navegador — probá con Chrome, Edge o Safari.",
+    micBlocked: "Micrófono bloqueado — el dictado por voz necesita HTTPS.",
+    micError: function(err){ return "Error de dictado por voz: " + err; },
+    historyCleared: "Historial borrado.",
+    speechLang: "es-AR"
+  }
+};
+
+var LANG = (function(){
+  var saved = null;
+  try { saved = localStorage.getItem("polkorp_lang"); } catch (e){}
+  if (saved === "en" || saved === "es") return saved;
+  return (navigator.language || "").toLowerCase().indexOf("es") === 0 ? "es" : "en";
+})();
+
+function t(key){ return STRINGS[LANG][key]; }
+
+function applyLanguage(){
+  document.getElementById("langToggle").textContent = LANG === "en" ? "ES" : "EN";
+  document.documentElement.lang = LANG;
+
+  var line1 = document.getElementById("loginLine1");
+  if (line1 && !line1.textContent) { /* not typed yet — runLoginSequence will use t() */ }
+  var accessLabelEl = document.querySelector(".login-access-label");
+  if (accessLabelEl) accessLabelEl.textContent = t("accessLabel");
+  var accessErrorEl = document.getElementById("accessError");
+  if (accessErrorEl) accessErrorEl.textContent = t("accessError");
+
+  var tagEl = document.querySelector(".brand-lines");
+  if (tagEl) tagEl.innerHTML = escapeHtml(t("tagline1")) + "<br>" + escapeHtml(t("tagline2"));
+  var headerStatusEl = document.getElementById("headerStatusText");
+  if (headerStatusEl) headerStatusEl.textContent = t("headerStatus");
+
+  var cmdLabel = document.querySelector(".command-label");
+  if (cmdLabel) cmdLabel.innerHTML = '<span class="glyph">◈</span> ' + escapeHtml(t("commandLabel"));
+  var micBtn = document.getElementById("micBtn");
+  if (micBtn && !micBtn.disabled){ micBtn.title = t("micLabel"); micBtn.setAttribute("aria-label", t("micLabel")); }
+
+  renderFolderStatus();
+  var pipelineHeadEl = document.querySelector(".pipeline-head");
+  if (pipelineHeadEl) pipelineHeadEl.innerHTML = '<span class="glyph">⛓</span> ' + escapeHtml(t("pipelineHead"));
+
+  if (typeof renderCards === "function") renderCards();
+  var historyTitleEl = document.querySelector("#historyPanel .panel-head h2");
+  if (historyTitleEl) historyTitleEl.textContent = t("historyTitle");
+  var historyClearEl = document.getElementById("historyClear");
+  if (historyClearEl) historyClearEl.textContent = t("historyClear");
+  if (typeof renderHistory === "function") renderHistory();
+
+  var termHeaderEl = document.querySelector(".terminal-head span");
+  if (termHeaderEl) termHeaderEl.textContent = t("terminalHeader");
+  var termInputEl = document.getElementById("terminalInput");
+  if (termInputEl) termInputEl.placeholder = t("terminalPlaceholder");
+
+  var vpsTitleEl = document.querySelector("#vpsStatus .vps-head");
+  if (vpsTitleEl) vpsTitleEl.innerHTML = '<span>◈</span> ' + escapeHtml(t("vpsTitle"));
+  var vpsRows = document.querySelectorAll("#vpsStatus .vps-row span:first-child");
+  var vpsLabelKeys = ["vpsState", "vpsGpuLabel", "vpsRamLabel", "vpsModelsLabel", "vpsUptimeLabel"];
+  vpsRows.forEach(function(el, i){ if (vpsLabelKeys[i]) el.textContent = t(vpsLabelKeys[i]); });
+  var vpsStateEl = document.getElementById("vpsState");
+  if (vpsStateEl && vpsStateEl.classList.contains("na")) vpsStateEl.textContent = t("vpsAwaiting");
+
+  var statusBarLeftEl = document.querySelector("#statusBar .status-left");
+  if (statusBarLeftEl) statusBarLeftEl.innerHTML = '<span class="dot"></span> ' + escapeHtml(t("statusBarLeft"));
+  var sessionActiveEl = document.querySelector("#statusBar > div:nth-child(2)");
+  if (sessionActiveEl) sessionActiveEl.textContent = t("sessionActive");
+  var logoutEl = document.getElementById("logoutLink");
+  if (logoutEl) logoutEl.textContent = t("logout");
+
+  var commandInputEl = document.getElementById("commandInput");
+  if (commandInputEl && !commandInputEl.value) commandInputEl.placeholder = t("placeholders")[0];
+}
+
+function setLang(lang){
+  LANG = lang;
+  try { localStorage.setItem("polkorp_lang", lang); } catch (e){}
+  applyLanguage();
+}
+document.getElementById("langToggle").addEventListener("click", function(){
+  setLang(LANG === "en" ? "es" : "en");
+});
 
 /* ==========================================================================
    AUTH — SHA-256 hash of the access code.
@@ -592,7 +810,7 @@ function runLoginSequence(){
     setTimeout(function(){ logo.classList.add("in"); }, 260);
   });
   wait(1450)
-    .then(function(){ return typeText(document.getElementById("loginLine1"), "Opening the world of AI for you."); })
+    .then(function(){ return typeText(document.getElementById("loginLine1"), t("loginLine1")); })
     .then(function(){ return wait(300); })
     .then(function(){
       var access = document.getElementById("loginAccess");
@@ -640,7 +858,7 @@ function enterDashboard(){
   dashboardEl.hidden = false;
   requestAnimationFrame(function(){ dashboardEl.classList.add("visible"); });
   initDashboard();
-  toast("⚡ Access granted. Welcome to POLKORP AI.", "success");
+  toast(t("toastAccessGranted"), "success");
 }
 
 /* ==========================================================================
@@ -714,17 +932,17 @@ function runPipeline(steps){
    CARD DATA + RENDER
    ========================================================================== */
 var CARDS = [
-  { id:"code", icon:"💻", title:"CODE", subtitle:"LLMs for development",
+  { id:"code", icon:"💻",
     items:["DeepSeek Coder V2","Llama 3.1 8B","Mistral","CodeQwen","Terminal Chat"] },
-  { id:"image", icon:"🖼️", title:"IMAGE", subtitle:"Generate · Edit · Inpaint · Upscale",
+  { id:"image", icon:"🖼️",
     items:["Fooocus","Lama Cleaner","Upscayl","Pipeline"] },
-  { id:"video", icon:"🎬", title:"VIDEO", subtitle:"Wan2.1 · AnimateDiff · SVD",
-    items:[], dimmed:true, badge:"Coming Soon" },
-  { id:"hack", icon:"🔓", title:"HACK / OSINT", subtitle:"Recon · Exploits · Analysis",
+  { id:"video", icon:"🎬",
+    items:[], dimmed:true, badge:true },
+  { id:"hack", icon:"🔓",
     items:["OSINT Recon","Vulnerability Analysis","Exploit Dev (LLM)","Security Audit"] },
-  { id:"orchestrate", icon:"🧠", title:"ORCHESTRATE", subtitle:"Chain multiple AIs", wide:true,
+  { id:"orchestrate", icon:"🧠", wide:true,
     items:["Image Pipeline","Code + Audit","Full Creative"] },
-  { id:"tools", icon:"⚙️", title:"MANUAL TOOLS", subtitle:"Direct access", wide:true,
+  { id:"tools", icon:"⚙️", wide:true,
     items:["Ollama Serve","Fooocus","Lama Cleaner","Upscayl","Pull All Models","Web UI"] }
 ];
 
@@ -732,6 +950,7 @@ function renderCards(){
   var grid = document.getElementById("cardGrid");
   grid.innerHTML = "";
   CARDS.forEach(function(card, idx){
+    var title = t("cardTitles")[card.id] || card.id;
     var el = document.createElement("div");
     el.className = "card" + (card.wide ? " wide" : "") + (card.dimmed ? " dimmed" : "");
     el.dataset.id = card.id;
@@ -742,10 +961,10 @@ function renderCards(){
     head.innerHTML =
       '<div class="card-icon">' + card.icon + '</div>' +
       '<div class="card-title-wrap">' +
-        '<div class="card-title">' + (idx+1) + '. ' + card.title + '</div>' +
-        '<div class="card-subtitle">' + card.subtitle + '</div>' +
+        '<div class="card-title">' + (idx+1) + '. ' + escapeHtml(title) + '</div>' +
+        '<div class="card-subtitle">' + escapeHtml(t("cardSubtitles")[card.id] || "") + '</div>' +
       '</div>' +
-      (card.badge ? '<div class="card-badge">' + card.badge + '</div>' : '') +
+      (card.badge ? '<div class="card-badge">' + escapeHtml(t("cardComingSoon")) + '</div>' : '') +
       (card.items.length ? '<svg class="card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>' : '');
     el.appendChild(head);
     var sub = document.createElement("div");
@@ -756,7 +975,7 @@ function renderCards(){
       btn.className = "submenu-item";
       btn.dataset.tool = item;
       btn.innerHTML = '<span>' + item + '</span><span class="submenu-arrow">→</span>';
-      btn.addEventListener("click", function(){ launchTool(item, card.title); });
+      btn.addEventListener("click", function(){ launchTool(item, title); });
       sub.appendChild(btn);
     });
     el.appendChild(sub);
@@ -780,30 +999,44 @@ function closeAllCards(){ document.querySelectorAll(".card.open").forEach(functi
 document.addEventListener("click", function(e){ if (!e.target.closest(".card")) closeAllCards(); });
 
 function launchTool(tool, category){
-  toast("Launching " + tool + "…", "info");
+  toast(t("toastLaunching")(tool), "info");
   pushHistory(tool, category, tool);
 }
 
 /* ==========================================================================
    LOCAL FOLDER CONNECTOR (File System Access API)
    ========================================================================== */
+var connectedFolder = null; // { name, count } | null
+
+function renderFolderStatus(){
+  var status = document.getElementById("folderStatus");
+  status.classList.toggle("connected", !!connectedFolder);
+  if (connectedFolder){
+    status.innerHTML = '<span class="folder-dot"></span>' + escapeHtml(t("folderConnectedPrefix")) +
+      '<span class="folder-name">' + escapeHtml(connectedFolder.name) + '</span>' +
+      escapeHtml(t("folderConnectedSuffix")(connectedFolder.count)) +
+      '<button type="button" id="folderInlineBtn">' + escapeHtml(t("folderChange")) + '</button>';
+  } else {
+    status.innerHTML = '<span class="folder-dot"></span>' + escapeHtml(t("folderNotConnected")) +
+      '<button type="button" id="folderInlineBtn">' + escapeHtml(t("folderBrowse")) + '</button>';
+  }
+  document.getElementById("folderInlineBtn").addEventListener("click", connectLocalFolder);
+}
+
 async function connectLocalFolder(){
   if (!window.showDirectoryPicker){
-    toast("Local folder access needs a Chromium-based browser.", "warning");
+    toast(t("toastFolderNeedsChromium"), "warning");
     return;
   }
   try {
     var handle = await window.showDirectoryPicker();
     var count = 0;
     for await (var entry of handle.values()){ count++; }
-    var status = document.getElementById("folderStatus");
-    status.classList.add("connected");
-    status.innerHTML = '<span class="folder-dot"></span> Connected: <span class="folder-name">' +
-      escapeHtml(handle.name) + '</span> (' + count + ' items) — <button type="button" id="folderInlineBtn">change</button>';
-    document.getElementById("folderInlineBtn").addEventListener("click", connectLocalFolder);
-    toast("Connected local folder “" + handle.name + "”.", "success");
+    connectedFolder = { name: handle.name, count: count };
+    renderFolderStatus();
+    toast(t("toastFolderConnected")(handle.name), "success");
   } catch (err){
-    if (err && err.name !== "AbortError") toast("Could not open that folder.", "error");
+    if (err && err.name !== "AbortError") toast(t("toastFolderError"), "error");
   }
 }
 document.getElementById("folderToggle").addEventListener("click", connectLocalFolder);
@@ -812,19 +1045,13 @@ document.getElementById("folderInlineBtn").addEventListener("click", connectLoca
 /* ==========================================================================
    COMMAND PROMPT
    ========================================================================== */
-var PLACEHOLDERS = [
-  "Write a Python exploit...",
-  "Generate a cyberpunk city...",
-  "Clean this image and upscale to 4K...",
-  "Audit and chain multiple tools...",
-  "Recon a target domain..."
-];
 var phIndex = 0;
 function cyclePlaceholder(){
   var input = document.getElementById("commandInput");
   if (document.activeElement !== input && !input.value){
-    phIndex = (phIndex + 1) % PLACEHOLDERS.length;
-    input.placeholder = PLACEHOLDERS[phIndex];
+    var list = t("placeholders");
+    phIndex = (phIndex + 1) % list.length;
+    input.placeholder = list[phIndex];
   }
 }
 setInterval(cyclePlaceholder, 3000);
@@ -856,17 +1083,17 @@ function fetchJSON(url, opts, timeoutMs){
 function askAgent(category, message){
   var agentKey = CATEGORY_TO_AGENT[category] || "terminal";
   termLine(message, "t-cmd");
-  termLine("Thinking… (" + agentKey + ")", "t-out");
+  termLine(t("termThinking")(agentKey), "t-out");
   fetchJSON(API_BASE + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agent: agentKey, message: message })
+    body: JSON.stringify({ agent: agentKey, message: message, lang: LANG })
   }, 130000).then(function(data){
     termLine(data.reply, "t-out");
     toast(data.reply.length > 90 ? data.reply.slice(0, 90) + "…" : data.reply, data.live ? "success" : "warning");
   }).catch(function(){
-    termLine("Backend unreachable at " + API_BASE + " — is the VPS backend container running?", "t-out");
-    toast("Backend unreachable — check the VPS.", "error");
+    termLine(t("termBackendDown")(API_BASE), "t-out");
+    toast(t("toastBackendUnreachable"), "error");
   });
 }
 
@@ -879,10 +1106,10 @@ function handleCommand(text){
     var result = route(text);
     pushHistory(text, result.category, result.tool);
     if (result.pipeline){
-      toast("Orchestrating pipeline: " + result.pipeline.join(" → "), "success");
+      toast(t("toastPipeline")(result.pipeline.join(" → ")), "success");
       runPipeline(result.pipeline);
     } else {
-      toast("Routing to " + result.tool + " (" + result.category + ")", "success");
+      toast(t("toastRouting")(result.tool, result.category), "success");
       askAgent(result.category, text);
     }
     var cardId = CARD_TO_ROUTE[result.category] || "code";
@@ -901,23 +1128,23 @@ document.getElementById("commandInput").addEventListener("keydown", function(e){
 });
 
 /* ==========================================================================
-   VOICE DICTATION (Web Speech API)
-   Note: microphone access is blocked by browsers on plain HTTP (only
-   HTTPS/localhost are allowed), so this stays disabled/errors clearly on
-   an unencrypted deployment until SSL is set up.
+   VOICE DICTATION (Web Speech API) — English or Spanish, follows the
+   language toggle. Note: microphone access is blocked by browsers on
+   plain HTTP (only HTTPS/localhost are allowed), so this errors clearly
+   with a toast on an unencrypted deployment until SSL is set up. If the
+   API isn't supported at all, the button stays clickable and explains
+   why instead of going silently dead.
    ========================================================================== */
 (function(){
   var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   var micBtn = document.getElementById("micBtn");
   if (!Recognition){
-    micBtn.disabled = true;
-    micBtn.title = "Voice dictation not supported in this browser";
+    micBtn.addEventListener("click", function(){ toast(t("micNotSupported"), "warning"); });
     return;
   }
   var recognition = new Recognition();
   recognition.continuous = false;
   recognition.interimResults = true;
-  recognition.lang = navigator.language || "en-US";
   var listening = false;
 
   recognition.onstart = function(){ listening = true; micBtn.classList.add("listening"); };
@@ -926,9 +1153,9 @@ document.getElementById("commandInput").addEventListener("keydown", function(e){
     listening = false;
     micBtn.classList.remove("listening");
     if (e.error === "not-allowed" || e.error === "service-not-allowed"){
-      toast("Microphone blocked — voice dictation needs HTTPS.", "error");
+      toast(t("micBlocked"), "error");
     } else if (e.error !== "aborted" && e.error !== "no-speech"){
-      toast("Voice dictation error: " + e.error, "error");
+      toast(t("micError")(e.error), "error");
     }
   };
   recognition.onresult = function(e){
@@ -938,6 +1165,7 @@ document.getElementById("commandInput").addEventListener("keydown", function(e){
   };
   micBtn.addEventListener("click", function(){
     if (listening){ recognition.stop(); return; }
+    recognition.lang = t("speechLang");
     try { recognition.start(); } catch (err){ /* already running */ }
   });
 })();
@@ -959,7 +1187,7 @@ function formatTime(ts){ return new Date(ts).toLocaleTimeString([], { hour:"2-di
 function renderHistory(){
   var list = getHistory();
   var el = document.getElementById("historyList");
-  if (!list.length){ el.innerHTML = '<div class="history-empty">No requests yet.</div>'; return; }
+  if (!list.length){ el.innerHTML = '<div class="history-empty">' + escapeHtml(t("historyEmpty")) + '</div>'; return; }
   el.innerHTML = "";
   list.forEach(function(entry){
     var btn = document.createElement("button");
@@ -978,7 +1206,7 @@ function escapeHtml(str){ var d = document.createElement("div"); d.textContent =
 function setHistoryPanel(open){ document.getElementById("historyPanel").classList.toggle("open", open); }
 document.getElementById("historyToggle").addEventListener("click", function(){ setHistoryPanel(!document.getElementById("historyPanel").classList.contains("open")); });
 document.getElementById("historyClose").addEventListener("click", function(){ setHistoryPanel(false); });
-document.getElementById("historyClear").addEventListener("click", function(){ setHistory([]); renderHistory(); toast("History cleared.", "warning"); });
+document.getElementById("historyClear").addEventListener("click", function(){ setHistory([]); renderHistory(); toast(t("historyCleared"), "warning"); });
 
 /* ==========================================================================
    TERMINAL
@@ -1002,15 +1230,15 @@ function termCommand(cmd){
   p.textContent = cmd;
   body.appendChild(p);
   var trimmed = cmd.trim().toLowerCase();
-  if (trimmed === "help") termLine("Available commands: help, status, clear, history, exit");
-  else if (trimmed === "status") termLine("POLKORP AI — orchestrator online. VPS: awaiting deployment.");
+  if (trimmed === "help") termLine(t("termHelp"));
+  else if (trimmed === "status") termLine(t("termStatus"));
   else if (trimmed === "clear"){ body.innerHTML = ""; return; }
   else if (trimmed === "history"){
     var list = getHistory();
-    if (!list.length) termLine("No history yet.");
+    if (!list.length) termLine(t("termNoHistory"));
     else list.slice(0, 20).forEach(function(entry){ termLine(formatTime(entry.time) + "  " + entry.tool + "  —  " + entry.text); });
   } else if (trimmed === "exit") setTerminalPanel(false);
-  else if (trimmed !== "") termLine("command not found: " + cmd);
+  else if (trimmed !== "") termLine(t("termNotFound")(cmd));
   body.scrollTop = body.scrollHeight;
 }
 document.getElementById("terminalToggle").addEventListener("click", function(){ setTerminalPanel(!document.getElementById("terminalPanel").classList.contains("open")); });
@@ -1031,10 +1259,10 @@ function fetchVpsStatus(){
 function renderVpsStatus(status){
   var stateEl = document.getElementById("vpsState");
   if (!status.connected){
-    stateEl.textContent = "Awaiting deployment";
+    stateEl.textContent = t("vpsAwaiting");
     return;
   }
-  stateEl.textContent = "Online";
+  stateEl.textContent = t("vpsOnline");
   stateEl.classList.remove("na");
   document.getElementById("vpsGpu").textContent = status.gpu;
   document.getElementById("vpsRam").textContent = status.ram;
@@ -1092,6 +1320,8 @@ function initDashboard(){
   setInterval(tickClock, 1000);
   fetchVpsStatus().then(renderVpsStatus);
 }
+
+applyLanguage();
 
 if (sessionStorage.getItem("polkorp_authenticated") === "true"){
   loginEl.hidden = true;

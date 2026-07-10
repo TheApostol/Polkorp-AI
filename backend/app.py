@@ -35,6 +35,11 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Agent definitions
 # ---------------------------------------------------------------------------
+LANG_INSTRUCTION = {
+    "en": "Respond in English.",
+    "es": "Respondé en español (usando el vos rioplatense, no el tú).",
+}
+
 AGENTS = {
     "terminal": {
         "name": "Terminal Chat",
@@ -53,53 +58,92 @@ AGENTS = {
             "assistant running entirely on the user's own hardware for "
             "their own authorized development, scripting, and security "
             "testing work. Write clear, correct, working code. Explain "
-            "tradeoffs briefly when relevant."
+            "tradeoffs briefly when relevant. Code itself, variable names, "
+            "and comments stay in English regardless of response language."
         ),
     },
     "image": {
         "name": "Fooocus (Image)",
         "live": False,
-        "unavailable_reason": (
-            "Image generation needs GPU (Fooocus) — not installed on this "
-            "CPU-only VPS. Run kaggle-gpu-notebook.ipynb for a free GPU "
-            "session, or use a GPU VPS with deploy-vps-full.sh."
-        ),
+        "unavailable_reason": {
+            "en": (
+                "Image generation needs GPU (Fooocus) — not installed on this "
+                "CPU-only VPS. Run kaggle-gpu-notebook.ipynb for a free GPU "
+                "session, or use a GPU VPS with deploy-vps-full.sh."
+            ),
+            "es": (
+                "La generación de imágenes necesita GPU (Fooocus) — no está "
+                "instalada en este VPS que solo tiene CPU. Corré "
+                "kaggle-gpu-notebook.ipynb para una sesión GPU gratuita, o "
+                "usá un VPS con GPU con deploy-vps-full.sh."
+            ),
+        },
     },
     "restoration": {
         "name": "Lama Cleaner",
         "live": False,
-        "unavailable_reason": (
-            "Image restoration/inpainting needs Lama Cleaner, which is "
-            "installed via pipx on the host, not through this chat agent. "
-            "Run 'lama-cleaner --port 8080 --host 0.0.0.0' on the VPS and "
-            "open port 8080."
-        ),
+        "unavailable_reason": {
+            "en": (
+                "Image restoration/inpainting needs Lama Cleaner, which is "
+                "installed via pipx on the host, not through this chat agent. "
+                "Run 'lama-cleaner --port 8080 --host 0.0.0.0' on the VPS and "
+                "open port 8080."
+            ),
+            "es": (
+                "La restauración/retoque de imágenes necesita Lama Cleaner, "
+                "que se instala vía pipx en el host, no a través de este "
+                "agente. Corré 'lama-cleaner --port 8080 --host 0.0.0.0' en "
+                "el VPS y abrí el puerto 8080."
+            ),
+        },
     },
     "upscaling": {
         "name": "Upscayl",
         "live": False,
-        "unavailable_reason": (
-            "Upscaling (Upscayl) is a desktop tool, not wired into this "
-            "backend yet. Use kaggle-gpu-notebook.ipynb or run it manually."
-        ),
+        "unavailable_reason": {
+            "en": (
+                "Upscaling (Upscayl) is a desktop tool, not wired into this "
+                "backend yet. Use kaggle-gpu-notebook.ipynb or run it manually."
+            ),
+            "es": (
+                "El mejorado de resolución (Upscayl) es una herramienta de "
+                "escritorio, todavía no está conectada a este backend. Usá "
+                "kaggle-gpu-notebook.ipynb o corrélo manualmente."
+            ),
+        },
     },
     "osint": {
         "name": "OSINT Module",
         "live": False,
-        "unavailable_reason": (
-            "The OSINT/recon module isn't installed on this box yet — no "
-            "tooling is wired up here. This category is a placeholder in "
-            "the router until a real OSINT toolchain is deployed."
-        ),
+        "unavailable_reason": {
+            "en": (
+                "The OSINT/recon module isn't installed on this box yet — no "
+                "tooling is wired up here. This category is a placeholder in "
+                "the router until a real OSINT toolchain is deployed."
+            ),
+            "es": (
+                "El módulo de OSINT/recon todavía no está instalado en este "
+                "servidor. Esta categoría es un placeholder en el router "
+                "hasta que se despliegue un toolchain de OSINT real."
+            ),
+        },
     },
     "orchestrate": {
         "name": "Orchestrator",
         "live": False,
-        "unavailable_reason": (
-            "Multi-agent pipeline chaining is a UI simulation for now — "
-            "there's no orchestration engine calling multiple agents in "
-            "sequence yet. Each step still needs its own live agent first."
-        ),
+        "unavailable_reason": {
+            "en": (
+                "Multi-agent pipeline chaining is a UI simulation for now — "
+                "there's no orchestration engine calling multiple agents in "
+                "sequence yet. Each step still needs its own live agent first."
+            ),
+            "es": (
+                "El encadenado de pipeline multi-agente es por ahora una "
+                "simulación de interfaz — todavía no hay un motor de "
+                "orquestación que llame a varios agentes en secuencia. Cada "
+                "paso todavía necesita su propio agente activo primero."
+            ),
+        },
     },
 }
 
@@ -107,6 +151,7 @@ AGENTS = {
 class ChatRequest(BaseModel):
     agent: str
     message: str
+    lang: str = "en"
 
 
 @app.get("/api/agents")
@@ -119,14 +164,16 @@ def list_agents():
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    lang = req.lang if req.lang in LANG_INSTRUCTION else "en"
     agent = AGENTS.get(req.agent, AGENTS["terminal"])
     if not agent["live"]:
         return {
             "agent": agent["name"],
             "live": False,
-            "reply": agent["unavailable_reason"],
+            "reply": agent["unavailable_reason"][lang],
         }
 
+    system_prompt = agent["system_prompt"] + " " + LANG_INSTRUCTION[lang]
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
@@ -134,7 +181,7 @@ async def chat(req: ChatRequest):
                 json={
                     "model": OLLAMA_MODEL,
                     "prompt": req.message,
-                    "system": agent["system_prompt"],
+                    "system": system_prompt,
                     "stream": False,
                 },
             )
@@ -146,14 +193,19 @@ async def chat(req: ChatRequest):
                 "reply": data.get("response", "").strip() or "(empty response)",
             }
     except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        detail = (
+            f"Couldn't reach Ollama ({OLLAMA_MODEL}) — it may still be "
+            f"loading the model on this CPU-only box, or the pull "
+            f"never finished. Details: {exc}"
+            if lang == "en" else
+            f"No se pudo conectar con Ollama ({OLLAMA_MODEL}) — puede que "
+            f"todavía esté cargando el modelo en este servidor sin GPU, o "
+            f"que la descarga nunca haya terminado. Detalles: {exc}"
+        )
         return {
             "agent": agent["name"],
             "live": True,
-            "reply": (
-                f"Couldn't reach Ollama ({OLLAMA_MODEL}) — it may still be "
-                f"loading the model on this CPU-only box, or the pull "
-                f"never finished. Details: {exc}"
-            ),
+            "reply": detail,
         }
 
 
