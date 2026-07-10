@@ -176,6 +176,8 @@ header.top{padding:40px 0 26px;border-bottom:1px solid var(--border-soft)}
 .pipeline-step.active{color:var(--text)}
 .pipeline-step.active .mark{color:var(--primary);animation:spin .9s linear infinite;display:inline-block}
 .pipeline-step.pending .mark{color:var(--text-dim)}
+.pipeline-step.error{color:var(--error)}
+.pipeline-step.error .mark{color:var(--error)}
 
 /* ============================== GRID ============================== */
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
@@ -935,7 +937,14 @@ function route(input){
   }
   if (!matches.length) return { tool: "Terminal Chat (Llama 3.1 8B)", category: "Terminal Chat", pipeline: null };
   if (matches.length > 1 || matches[0].category === "Orchestrate"){
-    return { tool: "Orchestrator", category: "Orchestrate", pipeline: matches.map(function(m){ return m.tool; }) };
+    // Keep category alongside each tool name so runPipeline can actually
+    // dispatch each step to the right backend agent, instead of just
+    // having a display label with no idea which agent it maps to.
+    return {
+      tool: "Orchestrator",
+      category: "Orchestrate",
+      pipeline: matches.map(function(m){ return { category: m.category, tool: m.tool }; })
+    };
   }
   return { tool: matches[0].tool, category: matches[0].category, pipeline: null };
 }
@@ -946,35 +955,74 @@ var CARD_TO_ROUTE = {
 };
 
 /* ==========================================================================
-   PIPELINE ORCHESTRATOR — simulated multi-step execution.
-   No backend exists yet (VPS is 3-4 days out), so steps advance on a
-   timer. This is a UI simulation, not a real orchestration call.
+   PIPELINE ORCHESTRATOR — real multi-step execution.
+   Each step is a real /api/chat call to the backend agent that owns that
+   step's category. Steps run strictly in sequence (not in parallel) so
+   each one can see the previous step's actual output — that's the whole
+   point of "chaining" rather than just labeling steps. A step that fails
+   (backend down, timeout, etc.) is marked with an error state but the
+   chain keeps going rather than stalling forever on one dead step.
    ========================================================================== */
-function runPipeline(steps){
+function runPipeline(steps, originalMessage){
   var box = document.getElementById("pipeline");
   var list = document.getElementById("pipelineSteps");
   box.classList.add("active");
   list.innerHTML = "";
-  var rows = steps.map(function(name){
+  var rows = steps.map(function(step){
     var row = document.createElement("div");
     row.className = "pipeline-step pending";
-    row.innerHTML = '<span class="mark">○</span><span class="label">' + escapeHtml(name) + '</span>';
+    row.innerHTML = '<span class="mark">○</span><span class="label">' + escapeHtml(step.tool) + '</span>';
     list.appendChild(row);
     return row;
   });
+
+  var priorReply = "";
   var i = 0;
-  function advance(){
-    if (i > 0) { rows[i-1].className = "pipeline-step done"; rows[i-1].querySelector(".mark").textContent = "✓"; }
+
+  function runStep(){
     if (i >= rows.length){
       setTimeout(function(){ box.classList.remove("active"); }, 1400);
       return;
     }
-    rows[i].className = "pipeline-step active";
-    rows[i].querySelector(".mark").textContent = "⟳";
-    i++;
-    setTimeout(advance, 850);
+    var step = steps[i];
+    var row = rows[i];
+    row.className = "pipeline-step active";
+    row.querySelector(".mark").textContent = "⟳";
+
+    var agentKey = CATEGORY_TO_AGENT[step.category] || "terminal";
+    var message = priorReply
+      ? "Multi-step task, step " + (i+1) + " of " + steps.length + " (" + step.tool + "). " +
+        "Previous step (" + steps[i-1].tool + ") produced:\n" + priorReply +
+        "\n\nOriginal request: " + originalMessage
+      : originalMessage;
+    var model = TOOL_TO_MODEL[step.tool] || null;
+    var payload = { agent: agentKey, message: message, lang: LANG };
+    if (model) payload.model = model;
+    termLine(message, "t-cmd");
+    termLine(t("termThinking")(agentKey), "t-out");
+
+    fetchJSON(API_BASE + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }, 130000).then(function(data){
+      var line = data.model ? "[" + data.model + "] " + data.reply : data.reply;
+      termLine(line, "t-out");
+      priorReply = data.reply;
+      row.className = "pipeline-step done";
+      row.querySelector(".mark").textContent = "✓";
+      i++;
+      runStep();
+    }).catch(function(){
+      termLine(t("termBackendDown")(API_BASE), "t-out");
+      row.className = "pipeline-step error";
+      row.querySelector(".mark").textContent = "✗";
+      toast(t("toastBackendUnreachable"), "error");
+      i++;
+      runStep();
+    });
   }
-  advance();
+  runStep();
 }
 
 /* ==========================================================================
@@ -1188,8 +1236,8 @@ function handleCommand(text){
     var result = route(text);
     pushHistory(text, result.category, result.tool);
     if (result.pipeline){
-      toast(t("toastPipeline")(result.pipeline.join(" → ")), "success");
-      runPipeline(result.pipeline);
+      toast(t("toastPipeline")(result.pipeline.map(function(s){ return s.tool; }).join(" → ")), "success");
+      runPipeline(result.pipeline, text);
     } else {
       toast(t("toastRouting")(result.tool, result.category), "success");
       askAgent(result.category, text);
@@ -1199,7 +1247,7 @@ function handleCommand(text){
     var card = document.querySelector('.card[data-id="' + cardId + '"]');
     if (card){
       card.scrollIntoView({ behavior:"smooth", block:"center" });
-      var toolName = result.pipeline ? result.pipeline[0] : result.tool;
+      var toolName = result.pipeline ? result.pipeline[0].tool : result.tool;
       var match = Array.prototype.find.call(card.querySelectorAll(".submenu-item"), function(b){ return b.dataset.tool === toolName; });
       if (match){ match.classList.add("flash"); setTimeout(function(){ match.classList.remove("flash"); }, 1200); }
     }
