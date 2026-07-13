@@ -90,6 +90,8 @@ AGENTS = {
             "language."
         ),
         "model_preference": [
+            "huihui_ai/qwen2.5-coder-abliterate:14b",
+            "huihui_ai/qwen2.5-coder-abliterate:7b",
             "deepseek-coder-v2", "codeqwen", "mistral", "llama3.1:8b",
             "huihui_ai/qwen2.5-abliterate:0.5b", "qwen2.5:0.5b",
         ],
