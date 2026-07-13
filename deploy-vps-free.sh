@@ -149,9 +149,9 @@ ok "Stack is up (dashboard, backend, ollama)"
 #    manually afterward — it'll be picked automatically once pulled, since
 #    backend/app.py auto-selects the best model that's actually loadable.
 # ---------------------------------------------------------------------------
-info "Pulling qwen2.5:0.5b into Ollama (small enough to run on low-RAM free-tier boxes)..."
-if docker compose -f "${POLKORP_DIR}/docker-compose.yml" exec -T ollama ollama pull qwen2.5:0.5b; then
-  ok "qwen2.5:0.5b pulled"
+info "Pulling huihui_ai/qwen2.5-abliterate:0.5b into Ollama (uncensored, ~400MB, runs on low-RAM free-tier boxes)..."
+if docker compose -f "${POLKORP_DIR}/docker-compose.yml" exec -T ollama ollama pull huihui_ai/qwen2.5-abliterate:0.5b; then
+  ok "huihui_ai/qwen2.5-abliterate:0.5b pulled"
 else
   warn "Model pull failed — check 'docker compose logs ollama' and retry manually later."
 fi
